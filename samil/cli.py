@@ -1,16 +1,14 @@
 """Command-line interface."""
-import json
 import logging
 from collections import namedtuple
-from decimal import Decimal
 from time import time, sleep
 
 import click
-from paho.mqtt.client import Client as MQTTClient
 
 from samil.inverter import InverterNotFoundError, InverterFinder, KeepAliveInverter
 from samil.inverterutil import connect_inverters
 from samil.pvoutput import add_status, aggregate_statuses
+from samil.mqttoutput import MqttOutput
 
 
 @click.group()
@@ -114,19 +112,6 @@ def monitor(interval: float, interface: str):
             sleep(max(t - time(), 0))
 
 
-class DecimalEncoder(json.JSONEncoder):
-    """JSON encoder that converts Decimal to float.
-
-    Note: precision is lost here!
-    """
-
-    def default(self, o):
-        """See base class."""
-        if isinstance(o, Decimal):
-            return float(o)
-        return super().default(o)
-
-
 @cli.command()
 @click.option('-n', '--inverters', 'n', default=1, help="Number of inverters.", show_default=True)
 @click.option('-i', '--interval', default=10.0, help="Interval between status messages in seconds.", show_default=True)
@@ -166,36 +151,23 @@ def mqtt(n: int, interval: float, host, port, client_id, tls: bool, username, pa
                                                topic="{}/{}/status".format(topic_prefix, serial_number),
                                                serial_number=serial_number))
 
-        print("Connecting to MQTT broker")
-        client = MQTTClient(client_id=client_id)
-        if tls:
-            client.tls_set()
-        if username:
-            client.username_pw_set(username, password)
-        client.connect(host=host, port=port, bind_address=interface or '')
-        client.loop_start()  # Starts handling MQTT traffic in separate thread
+        with MqttOutput(host, client_id, tls, username, password, port, interface) as mqtt:
+            mqtt.connect()
 
-        try:
             # Startup done
             topics = ", ".join(x.topic for x in mqtt_inverters)
             print("Startup complete, now publishing status data every {} seconds to topic(s): {}".format(interval,
-                                                                                                         topics))
+                                                                                                        topics))
 
             start_time = time()
             while True:
                 for mqtt_inverter in mqtt_inverters:
                     status = mqtt_inverter.inverter.status()
-                    message = json.dumps(status,
-                                         cls=DecimalEncoder,
-                                         separators=(',', ':'))  # Compact encoding
-                    client.publish(topic=mqtt_inverter.topic, payload=message)
+                    mqtt.publish(mqtt_inverter.topic, status)
 
                 # This doesn't suffer from drifting, however it will skip messages when
                 #  a message takes longer than the interval.
                 sleep(interval - ((time() - start_time) % interval))
-        finally:
-            # Disconnect MQTT on exception
-            client.disconnect()
 
 
 @cli.command()
