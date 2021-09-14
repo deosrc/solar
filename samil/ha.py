@@ -30,7 +30,7 @@ class HomeAssistantDiscovery:
 
         topic = self._getTopic(inverterModel, sensorId)
         discoveryMessage = self._getBaseMessage(inverterModel, sensorId, sensorName, stateTopic)
-        self._addSensorSpecificAttributes(discoveryMessage, sensorId)
+        self._addSensorSpecificAttributes(discoveryMessage, sensorId, stateTopic)
 
         discoveryMessage = self._removeKeysWithNoValue(discoveryMessage)
         self.__mqttOutput.publish(topic, discoveryMessage)
@@ -70,11 +70,12 @@ class HomeAssistantDiscovery:
         }
 
     @staticmethod
-    def _addSensorSpecificAttributes(baseMessage, sensorId):
+    def _addSensorSpecificAttributes(baseMessage, sensorId, stateTopic):
         if 'temperature' in sensorId:
             baseMessage['device_class'] = 'temperature'
             baseMessage['unit_of_measurement'] = '°C'
             baseMessage['icon'] = 'mdi:thermometer'
+            baseMessage['state_class'] = 'measurement'
         elif 'time' in sensorId:
             baseMessage['unit_of_measurement'] = 'h'
             baseMessage['icon'] = 'mdi:timer-outline'
@@ -82,9 +83,11 @@ class HomeAssistantDiscovery:
             baseMessage['device_class'] = 'power'
             baseMessage['unit_of_measurement'] = 'W'
             baseMessage['icon'] = 'mdi:lightning-bolt'
+            baseMessage['state_class'] = 'measurement'
         elif 'current' in sensorId:
             baseMessage['device_class'] = 'current'
             baseMessage['unit_of_measurement'] = 'A'
+            baseMessage['state_class'] = 'measurement'
             if sensorId.startswith('pv'):
                 baseMessage['icon'] = 'mdi:current-dc'
             else:
@@ -93,15 +96,22 @@ class HomeAssistantDiscovery:
             baseMessage['device_class'] = 'voltage'
             baseMessage['unit_of_measurement'] = 'V'
             baseMessage['icon'] = 'mdi:lightning-bolt'
+            baseMessage['state_class'] = 'measurement'
         elif 'energy' in sensorId:
             baseMessage['device_class'] = 'energy'
             baseMessage['unit_of_measurement'] = 'kWh'
             baseMessage['icon'] = 'mdi:solar-power'
+            baseMessage['state_class'] = 'measurement'
         elif 'frequency' in sensorId:
             baseMessage['unit_of_measurement'] = 'Hz'
             baseMessage['icon'] = 'mdi:sine-wave'
+            baseMessage['state_class'] = 'measurement'
         else:
             baseMessage['icon'] = 'mdi:solar-panel'
+
+        if sensorId == 'energy_total':
+            # https://developers.home-assistant.io/docs/core/entity/sensor/#available-state-classes
+            baseMessage['state_class'] = 'total_increasing'
 
     @staticmethod
     def _removeKeysWithNoValue(dict: dict):
