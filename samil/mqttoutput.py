@@ -1,11 +1,14 @@
 """ MQTT status upload """
 from decimal import Decimal
 import json
+import logging
 from paho.mqtt.client import Client as MQTTClient
 
 class MqttOutput:
 
     def __init__(self, host: str, client_id: str, tls: bool, username: str, password: str, port: int=1883, interface: str=None):
+        self.__logger = logging.getLogger(__name__)
+
         self.__client = MQTTClient(client_id=client_id)
         if tls:
             self.__client.tls_set()
@@ -17,13 +20,16 @@ class MqttOutput:
         self.__interface = interface
 
     def connect(self):
-        print("Connecting to MQTT broker at {}:{}".format(self.__host, self.__port))
+        self.__logger.info("Connecting to MQTT broker at {}:{} ...".format(self.__host, self.__port))
         self.__client.connect(host=self.__host, port=self.__port, bind_address=self.__interface or '')
+        self.__logger.info("Connected to MQTT broker".format(self.__host, self.__port))
+
         self.__client.loop_start()  # Starts handling MQTT traffic in separate thread
 
     def publish(self, topic: str, message: dict):
         jsonMessage = json.dumps(message, cls=DecimalEncoder, separators=(',', ':'))  # Compact encoding
         self.__client.publish(topic=topic, payload=jsonMessage)
+        self.__logger.debug("Published mqtt message to topic {}".format(topic))
 
     def __enter__(self):
         return self

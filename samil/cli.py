@@ -139,14 +139,18 @@ def mqtt(n: int, interval: float, host, port, client_id, tls: bool, username, pa
         "grid_voltage":242.6,"grid_current":3.6,"grid_frequency":50.01,
         "internal_temperature":35.0}
     """
+    # Print info messages (at least)
+    if logging.root.level > logging.INFO:
+        logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+
     MQTTInverter = namedtuple("MQTTInverter", ["inverter", "topic", "serial_number"])
 
-    print("Connecting to {} inverter(s)".format(n))
+    logging.info("Connecting to {} inverter(s)".format(n))
     mqtt_inverters = []
     with connect_inverters(interface, n) as inverters:
         for i in inverters:
             serial_number = i.model()["serial_number"]
-            print("Connected to inverter {} on IP {}".format(serial_number, i.addr))
+            logging.info("Connected to inverter {} on IP {}".format(serial_number, i.addr))
             mqtt_inverters.append(MQTTInverter(inverter=i,
                                                topic="{}/{}/status".format(topic_prefix, serial_number),
                                                serial_number=serial_number))
@@ -156,14 +160,15 @@ def mqtt(n: int, interval: float, host, port, client_id, tls: bool, username, pa
 
             # Startup done
             topics = ", ".join(x.topic for x in mqtt_inverters)
-            print("Startup complete, now publishing status data every {} seconds to topic(s): {}".format(interval,
-                                                                                                        topics))
+            logging.info("Startup complete, now publishing status data every {} seconds to topic(s): {}".format(interval,
+                                                                                                                topics))
 
             start_time = time()
             while True:
                 for mqtt_inverter in mqtt_inverters:
                     status = mqtt_inverter.inverter.status()
                     mqtt.publish(mqtt_inverter.topic, status)
+                    logging.info('Published status of inverter {} to MQTT'.format(mqtt_inverter.serial_number))
 
                 # This doesn't suffer from drifting, however it will skip messages when
                 #  a message takes longer than the interval.
