@@ -38,7 +38,7 @@ class HomeAssistantDiscovery:
 
     @staticmethod
     def _generateSensorName(serialNumber, sensorId):
-        attributeName = sensorId.replace('_', ' ').title().replace('pv', 'PV')
+        attributeName = sensorId.replace('_', ' ').title().replace('Pv', 'PV')
         return "{} {}".format(serialNumber, attributeName)
 
     def _getTopic(self, inverterModel, sensorId):
