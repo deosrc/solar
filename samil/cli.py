@@ -5,6 +5,7 @@ from time import time, sleep
 
 import click
 
+from samil.ha import HomeAssistantDiscovery
 from samil.inverter import InverterNotFoundError, InverterFinder, KeepAliveInverter
 from samil.inverterutil import connect_inverters
 from samil.pvoutput import add_status, aggregate_statuses
@@ -125,7 +126,20 @@ def monitor(interval: float, interface: str):
 @click.option('--password', help="MQTT password.")
 @click.option('--topic-prefix', help="MQTT topic prefix.", default='inverter', show_default=True)
 @click.option('--interface', help="IP address of local network interface to bind to.", default='')
-def mqtt(n: int, interval: float, host, port, client_id, tls: bool, username, password, interface, topic_prefix):
+@click.option('--ha-discovery', is_flag=True, default=False, help="Enable Home Assistant Discovery support.")
+def mqtt(
+        n: int,
+        interval: float,
+        host: str,
+        port: int,
+        client_id: str,
+        tls: bool,
+        username: str,
+        password: str,
+        interface: str,
+        topic_prefix: str,
+        ha_discovery: bool
+    ):
     """Publish inverter data to an MQTT broker.
 
     The default topic format is inverter/<serial number>/status, e.g.
@@ -157,6 +171,13 @@ def mqtt(n: int, interval: float, host, port, client_id, tls: bool, username, pa
 
         with MqttOutput(host, client_id, tls, username, password, port, interface) as mqtt:
             mqtt.connect()
+
+            # Publish HA discovery messages
+            if ha_discovery:
+                haDiscovery = HomeAssistantDiscovery(mqtt, interval)
+                haDiscovery.publicize(mqtt_inverters)
+            else:
+                logging.info('Home Assistant Discovery support disabled. Add the --ha-discovery flag to enable.')
 
             # Startup done
             topics = ", ".join(x.topic for x in mqtt_inverters)
