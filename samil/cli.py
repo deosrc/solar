@@ -173,9 +173,9 @@ def mqtt(
             mqtt.connect()
 
             # Publish HA discovery messages
+            haPublisher = None
             if ha_discovery:
-                haDiscovery = HomeAssistantDiscovery(mqtt, interval)
-                haDiscovery.publicize(mqtt_inverters)
+                haPublisher = HomeAssistantDiscovery(mqtt, interval)
             else:
                 logging.info('Home Assistant Discovery support disabled. Add the --ha-discovery flag to enable.')
 
@@ -185,15 +185,20 @@ def mqtt(
                                                                                                                 topics))
 
             start_time = time()
+            firstRun = True
             while True:
                 for mqtt_inverter in mqtt_inverters:
                     status = mqtt_inverter.inverter.status()
                     mqtt.publish(mqtt_inverter.topic, status)
                     logging.info('Published status of inverter {} to MQTT'.format(mqtt_inverter.serial_number))
 
+                    if firstRun and haPublisher:
+                        haPublisher.publicizeInverter(mqtt_inverter, status.keys())
+
                 # This doesn't suffer from drifting, however it will skip messages when
                 #  a message takes longer than the interval.
                 sleep(interval - ((time() - start_time) % interval))
+                firstRun = False
 
 
 @cli.command()

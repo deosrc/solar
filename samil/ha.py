@@ -4,125 +4,6 @@ import logging
 
 class HomeAssistantDiscovery:
 
-    __HA_SENSORS = [
-        {
-            'name': 'Operation Mode',
-            'ha_sensor_type': 'sensor',
-            'value_template': '{{ value_json.operation_mode }}',
-            'icon': 'mdi:solar-panel'
-        },
-        {
-            'name': 'Total Operation Time',
-            'ha_sensor_type': 'sensor',
-            'unit_of_measurement': 'h',
-            'value_template': '{{ value_json.total_operation_time }}',
-            'icon': 'mdi:timer-outline'
-        },
-        {
-            'name': 'PV1 Input Power',
-            'ha_sensor_type': 'sensor',
-            'device_class': 'power',
-            'unit_of_measurement': 'W',
-            'value_template': '{{ value_json.pv1_input_power }}',
-            'icon': 'mdi:solar-panel'
-        },
-        {
-            'name': 'PV1 Voltage',
-            'ha_sensor_type': 'sensor',
-            'device_class': 'voltage',
-            'unit_of_measurement': 'V',
-            'value_template': '{{ value_json.pv1_voltage }}',
-            'icon': 'mdi:solar-panel'
-        },
-        {
-            'name': 'PV1 Current',
-            'ha_sensor_type': 'sensor',
-            'device_class': 'current',
-            'unit_of_measurement': 'A',
-            'value_template': '{{ value_json.pv1_current }}',
-            'icon': 'mdi:solar-panel'
-        },
-        {
-            'name': 'PV2 Input Power',
-            'ha_sensor_type': 'sensor',
-            'device_class': 'power',
-            'unit_of_measurement': 'W',
-            'value_template': '{{ value_json.pv2_input_power }}',
-            'icon': 'mdi:solar-panel'
-        },
-        {
-            'name': 'PV2 Voltage',
-            'ha_sensor_type': 'sensor',
-            'device_class': 'voltage',
-            'unit_of_measurement': 'V',
-            'value_template': '{{ value_json.pv2_voltage }}',
-            'icon': 'mdi:solar-panel'
-        },
-        {
-            'name': 'PV2 Current',
-            'ha_sensor_type': 'sensor',
-            'device_class': 'current',
-            'unit_of_measurement': 'A',
-            'value_template': '{{ value_json.pv2_current }}',
-            'icon': 'mdi:solar-panel'
-        },
-        {
-            'name': 'Output Power',
-            'ha_sensor_type': 'sensor',
-            'device_class': 'power',
-            'unit_of_measurement': 'W',
-            'value_template': '{{ value_json.output_power }}',
-            'icon': 'mdi:lightning-bolt'
-        },
-        {
-            'name': 'Energy Today',
-            'ha_sensor_type': 'sensor',
-            'device_class': 'energy',
-            'unit_of_measurement': 'kWh',
-            'value_template': '{{ value_json.energy_today }}',
-            'icon': 'mdi:lightning-bolt'
-        },
-        {
-            'name': 'Energy Total',
-            'ha_sensor_type': 'sensor',
-            'device_class': 'energy',
-            'unit_of_measurement': 'kWh',
-            'value_template': '{{ value_json.energy_total }}',
-            'icon': 'mdi:lightning-bolt'
-        },
-        {
-            'name': 'Grid Voltage',
-            'ha_sensor_type': 'sensor',
-            'device_class': 'voltage',
-            'unit_of_measurement': 'V',
-            'value_template': '{{ value_json.grid_voltage }}',
-            'icon': 'mdi:transmission-tower'
-        },
-        {
-            'name': 'Grid Current',
-            'ha_sensor_type': 'sensor',
-            'device_class': 'current',
-            'unit_of_measurement': 'A',
-            'value_template': '{{ value_json.grid_current }}',
-            'icon': 'mdi:transmission-tower'
-        },
-        {
-            'name': 'Grid Frequency',
-            'ha_sensor_type': 'sensor',
-            'unit_of_measurement': 'Hz',
-            'value_template': '{{ value_json.grid_frequency }}',
-            'icon': 'mdi:sine-wave'
-        },
-        {
-            'name': 'Inverter Temperature',
-            'ha_sensor_type': 'sensor',
-            'device_class': 'temperature',
-            'unit_of_measurement': '°C',
-            'value_template': '{{ value_json.internal_temperature }}',
-            'icon': 'mdi:thermometer'
-        },
-    ]
-
     def __init__(self, mqttOutput: MqttOutput, interval: float, haDiscoveryPrefix: str='homeassistant'):
         self.__logger = logging.getLogger(__name__)
 
@@ -136,55 +17,91 @@ class HomeAssistantDiscovery:
             if not haDiscoveryPrefix.endswith('/'):
                 self.__haDiscoveryPrefix += '/'
 
-    def publicize(self, inverters):
-        for inverter in inverters:
-            self.publicizeInverter(inverter)
-
-    def publicizeInverter(self, inverter: namedtuple):
+    def publicizeInverter(self, inverter: namedtuple, statusKeys: list):
         modelDetails = inverter.inverter.model()
-        inverterId = modelDetails['serial_number']
 
-        for sensor in self.__HA_SENSORS:
-            self._publicizeInverterSensor(inverterId, inverter.topic, modelDetails, sensor)
+        for sensorId in statusKeys:
+            self._publicizeInverterSensor(modelDetails, sensorId, inverter.topic)
 
-        self.__logger.info("Published {} sensors for inverter {}".format(len(self.__HA_SENSORS), inverterId))
+        self.__logger.info("Published {} sensors for inverter {}".format(len(statusKeys), modelDetails['serial_number']))
 
-    def _publicizeInverterSensor(self, inverterId: str, inverterTopic: str, modelDetails: dict, sensor):
-        sensorName = self._getIdentifier(sensor['name'])
+    def _publicizeInverterSensor(self, inverterModel: dict, sensorId: str, stateTopic: str):
+        sensorName = self._generateSensorName(inverterModel['serial_number'], sensorId)
 
-        topic = '{}{}/{}/{}/config'.format(
+        topic = self._getTopic(inverterModel, sensorId)
+        discoveryMessage = self._getBaseMessage(inverterModel, sensorId, sensorName, stateTopic)
+        self._addSensorSpecificAttributes(discoveryMessage, sensorId)
+
+        discoveryMessage = self._removeKeysWithNoValue(discoveryMessage)
+        self.__mqttOutput.publish(topic, discoveryMessage)
+        self.__logger.debug("Published message for inverter {} sensor '{}'".format(inverterModel['serial_number'], sensorId))
+
+    @staticmethod
+    def _generateSensorName(serialNumber, sensorId):
+        attributeName = sensorId.replace('_', ' ').title().replace('pv', 'PV')
+        return "{} {}".format(serialNumber, attributeName)
+
+    def _getTopic(self, inverterModel, sensorId):
+        return '{}sensor/{}/{}/config'.format(
             self.__haDiscoveryPrefix,
-            sensor.get('ha_sensor_type', 'sensor'),
-            inverterId,
-            sensorName
+            inverterModel['serial_number'],
+            sensorId
         )
-        discoveryMessage=self._removeKeysWithNoValue({
-            'name': '{} {}'.format(inverterId, sensor['name']),
-            'device_class': sensor.get('device_class', ''),
-            'state_topic': inverterTopic,
-            'json_attributes_topic': inverterTopic,
-            'unit_of_measurement': sensor.get('unit_of_measurement', ''),
-            'value_template': sensor['value_template'],
-            'icon': sensor.get('icon', ''),
-            'unique_id': '{}_{}'.format(inverterId, sensorName),
+
+    def _getBaseMessage(self, inverterModel, sensorId, sensorName, stateTopic):
+        serialNumber = inverterModel['serial_number']
+        return {
+            'name': sensorName,
+            'state_topic': stateTopic,
+            'json_attributes_topic': stateTopic,
+            'value_template': '{{{{ value_json.{} }}}}'.format(sensorId),
+            'unique_id': '{}_{}'.format(serialNumber, sensorId),
             'device': {
                 'identifiers': [
-                    inverterId
+                    serialNumber
                 ],
-                'manufacturer': modelDetails['manufacturer'],
-                'model': modelDetails['model_name'],
-                'name': inverterId,
-                'sw_version': modelDetails['firmware_version']
+                'manufacturer': inverterModel['manufacturer'],
+                'model': inverterModel['model_name'],
+                'name': serialNumber,
+                'sw_version': inverterModel['firmware_version']
             },
             'expire_after': self.__expireAfter,
             'force_update': True
-        })
-        self.__mqttOutput.publish(topic, discoveryMessage)
-        self.__logger.debug("Published message for inverter {} sensor '{}'".format(inverterId, sensor['name']))
+        }
 
     @staticmethod
-    def _getIdentifier(name: str):
-        return name.replace(' ', '_').lower()
+    def _addSensorSpecificAttributes(baseMessage, sensorId):
+        if 'temperature' in sensorId:
+            baseMessage['device_class'] = 'temperature'
+            baseMessage['unit_of_measurement'] = '°C'
+            baseMessage['icon'] = 'mdi:thermometer'
+        elif 'time' in sensorId:
+            baseMessage['unit_of_measurement'] = 'h'
+            baseMessage['icon'] = 'mdi:timer-outline'
+        elif 'power' in sensorId:
+            baseMessage['device_class'] = 'power'
+            baseMessage['unit_of_measurement'] = 'W'
+            baseMessage['icon'] = 'mdi:lightning-bolt'
+        elif 'current' in sensorId:
+            baseMessage['device_class'] = 'current'
+            baseMessage['unit_of_measurement'] = 'A'
+            if sensorId.startswith('pv'):
+                baseMessage['icon'] = 'mdi:current-dc'
+            else:
+                baseMessage['icon'] = 'mdi:current-ac'
+        elif 'voltage' in sensorId:
+            baseMessage['device_class'] = 'voltage'
+            baseMessage['unit_of_measurement'] = 'V'
+            baseMessage['icon'] = 'mdi:lightning-bolt'
+        elif 'energy' in sensorId:
+            baseMessage['device_class'] = 'energy'
+            baseMessage['unit_of_measurement'] = 'kWh'
+            baseMessage['icon'] = 'mdi:solar-power'
+        elif 'frequency' in sensorId:
+            baseMessage['unit_of_measurement'] = 'Hz'
+            baseMessage['icon'] = 'mdi:sine-wave'
+        else:
+            baseMessage['icon'] = 'mdi:solar-panel'
 
     @staticmethod
     def _removeKeysWithNoValue(dict: dict):
