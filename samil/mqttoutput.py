@@ -26,9 +26,9 @@ class MqttOutput:
 
         self.__client.loop_start()  # Starts handling MQTT traffic in separate thread
 
-    def publish(self, topic: str, message: dict):
+    def publish(self, topic: str, message: dict, retain: bool=False):
         jsonMessage = json.dumps(message, cls=DecimalEncoder, separators=(',', ':'))  # Compact encoding
-        self.__client.publish(topic=topic, payload=jsonMessage)
+        self.__client.publish(topic=topic, payload=jsonMessage, retain=retain)
         self.__logger.debug("Published mqtt message to topic {}".format(topic))
 
     def __enter__(self):

@@ -33,7 +33,7 @@ class HomeAssistantDiscovery:
         self._addSensorSpecificAttributes(discoveryMessage, sensorId, stateTopic)
 
         discoveryMessage = self._removeKeysWithNoValue(discoveryMessage)
-        self.__mqttOutput.publish(topic, discoveryMessage)
+        self.__mqttOutput.publish(topic, discoveryMessage, retain=True)
         self.__logger.debug("Published message for inverter {} sensor '{}'".format(inverterModel['serial_number'], sensorId))
 
     @staticmethod
