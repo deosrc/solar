@@ -53,7 +53,6 @@ class HomeAssistantDiscovery:
         return {
             'name': sensorName,
             'state_topic': stateTopic,
-            'json_attributes_topic': stateTopic,
             'value_template': '{{{{ value_json.{} }}}}'.format(sensorId),
             'unique_id': '{}_{}'.format(serialNumber, sensorId),
             'device': {
