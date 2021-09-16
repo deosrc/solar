@@ -109,8 +109,9 @@ class HomeAssistantDiscovery:
         else:
             baseMessage['icon'] = 'mdi:solar-panel'
 
-        if sensorId == 'energy_total':
+        if sensorId == 'energy_total' or sensorId == 'energy_today':
             # https://developers.home-assistant.io/docs/core/entity/sensor/#available-state-classes
+            # https://developers.home-assistant.io/docs/core/entity/sensor/#entities-representing-a-total-amount
             baseMessage['state_class'] = 'total_increasing'
 
     @staticmethod
